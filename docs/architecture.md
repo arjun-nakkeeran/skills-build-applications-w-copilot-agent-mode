@@ -28,22 +28,25 @@ OctoFit Tracker is a three-tier application for a school fitness program. The st
 
 ## Implementation decisions
 
-Record your plan here before editing code.
-
-- Presentation tier decision:
-- Logic tier decision:
-- Data tier decision:
-- Activity tracking approach:
-- Team management approach:
-- Leaderboard approach:
-- Workout suggestions approach:
+- Presentation tier decision: Build the React routes as thin data consumers: each page fetches from `/api/*`, renders loading, empty, and API-error states, and keeps UI text/accessible roles aligned with the contract. The route components should not own business logic; they should simply map API payloads into cards, tables, and lists.
+- Logic tier decision: Keep the Express app organized by capability and service functions so validation, request parsing, aggregation, and 4xx behavior live in the backend instead of the database layer. The API should convert invalid IDs, missing user/team records, and missing names into deliberate 4xx responses rather than unhandled cast errors.
+- Data tier decision: Treat the schemas as the source of truth for required properties, defaults, and relationships. `User`, `Team`, `Activity`, and `Workout` should all validate required fields at the model layer; the seed script should insert idempotent fixtures without mutating unrelated data.
+- Activity tracking approach: Validate `userId` and `teamId` against existing records, reject malformed or missing references with a non-500 error, then add `points` and `occurredAt` on creation. `GET /api/activities` should return stored activities in a stable list, and the created resource should match the submitted values plus computed metadata.
+- Team management approach: Require a team `name` with `400` on invalid payloads, keep `members` as an array defaulting to `[]`, and preserve the submitted `mascot` while returning member IDs in list responses. The API should represent team membership in a way the frontend can render without extra transformation.
+- Leaderboard approach: Aggregate points per team across activities and rank entries with a 1-based `rank`, sorted highest total first. The calculation belongs in the backend so the frontend only needs to display the ranking payload.
+- Workout suggestions approach: Match `:userEmail` to a seeded user, infer the recommendation from recent activity patterns or the user's `fitnessGoal`, and return the top match with a clear `reason` string. If no user exists, respond with a deliberate 4xx (`404` is acceptable) rather than a generic internal error.
 
 ## Test plan
 
-Record the commands you run and what each failure means.
-
 - Data-tier command: `npm run test:data --prefix octofit-tracker/backend`
+  - Current failure meaning: the model validation is incomplete; `User`, `Team`, `Activity`, and `Workout` are not enforcing required fields, so the schema-level tests fail before any routes run.
 - API command: `npm run test:api --prefix octofit-tracker/backend`
+  - Current failure meaning: the route/service layer is still stubbed or missing; invalid requests return `501` instead of `400`, leaderboard aggregation is empty, and workout suggestions do not match the user pattern or reason contract.
 - Frontend command: `npm test --prefix octofit-tracker/frontend`
+  - Current failure meaning: the presentation layer is still using placeholder content (`Implementation pending`) and never enters the loading/empty/error UI states the contract expects.
 - Backend build command: `npm run build --prefix octofit-tracker/backend`
+  - Use this after the model and API contract pass to confirm the TypeScript server compiles cleanly.
 - Frontend build command: `npm run build --prefix octofit-tracker/frontend`
+  - Use this after the UI contract passes to confirm the React app builds without type or routing issues.
+
+The implementation order is intentionally: data -> logic -> presentation. This matches the dependency chain in the app: the API relies on valid Mongoose models, and the frontend relies on the API contract rather than working around backend gaps.
